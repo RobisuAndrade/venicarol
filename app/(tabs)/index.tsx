@@ -24,11 +24,9 @@ const firebaseConfig = {
   measurementId: "G-6TW5MB2294"
 };
 
-// Inicializa o Firebase e o Banco de Dados
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// Import das imagens
 import fotoCasal from '../../assets/foto-casal.jpg';
 import rest1 from '../../assets/resturante_1.jpg';
 import rest2 from '../../assets/resturante_2.jpg';
@@ -38,10 +36,8 @@ import rest4 from '../../assets/resturante_4.jpg';
 export default function HomeScreen() {
   const dataEvento = new Date('2026-05-23T20:00:00').getTime();
   const [timeLeft, setTimeLeft] = useState(dataEvento - Date.now());
-  
-  // Estados para o Formulário
   const [nome, setNome] = useState('');
-  const [acompanhantes, setAcompanhantes] = useState(1);
+  const [acompanhantes, setAcompanhantes] = useState(0);
   const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
@@ -59,36 +55,63 @@ export default function HomeScreen() {
 
   const fotosRestaurante = [rest1, rest2, rest3, rest4];
 
-  // FUNÇÃO PARA SALVAR NO BANCO DE DADOS
+  // --- FUNÇÃO DE VALIDAÇÃO DE PALAVRAS BLOQUEADAS (TURBINADA) ---
+  const verificarPalavrasBloqueadas = (texto: string) => {
+    const blacklist = [
+      // Termos de "engraçadinhos" e gírias
+      'GOSTOSO', 'GOSTOSA', 'GOSTOSINHO', 'GOSTOSINHA', 'DELICIA', 'DELÍCIA', 
+      'GATINHO', 'GATINHA', 'LINDO', 'LINDA', 'TESAO', 'TESÃO', 'BEBE', 'BEBÊ',
+      'NENEM', 'NENÉM', 'AMOR', 'AMORZINHO', 'XUXU', 'DOCINHO', 'SAFADO', 'SAFADA',
+      
+      // Insultos e palavrões
+      'CACHORRO', 'CADELA', 'PUTA', 'PUTO', 'CARALHO', 'FODER', 'FODA', 'CORNO', 
+      'OTARIO', 'OTÁRIO', 'VACILAO', 'VACILÃO', 'TROUXA', 'IDIOTA', 'IMBECIL', 
+      'MERDA', 'BOSTA', 'LIXO', 'DESGRAÇA', 'CAPETA', 'DIABO', 'VAGABUNDO', 'VAGABUNDA'
+    ];
+    
+    const textoUpper = texto.toUpperCase();
+    return blacklist.some(palavra => textoUpper.includes(palavra));
+  };
+
   const confirmarPresenca = async () => {
     if (nome.trim().length < 3) {
-      alert("Por favor, digite seu nome completo para a reserva.");
+      alert("POR FAVOR, DIGITE SEU NOME COMPLETO.");
+      return;
+    }
+
+    if (verificarPalavrasBloqueadas(nome)) {
+      alert("ENGRAÇADINHO VOCÊ, INFELIZMENTE TERÁ QUE PAGAR A CONTA TODA!");
       return;
     }
 
     setEnviando(true);
+    
     try {
+      const agora = new Date();
+      const NOMCRE = nome.toUpperCase();
+      const QTDACO = acompanhantes;
+      const SUMQTD = 1 + acompanhantes;
+      const DATCRE = agora.toLocaleDateString('pt-BR');
+      const HMSCRE = agora.toLocaleTimeString('pt-BR');
+
       const listaRef = ref(db, 'confirmacoes');
       const novaReservaRef = push(listaRef);
       
-      await set(novaReservaRef, {
-        nomeCompleto: nome,
-        quantidadePessoas: acompanhantes,
-        dataRegistro: new Date().toLocaleString('pt-BR')
-      });
+      await set(novaReservaRef, { NOMCRE, QTDACO, SUMQTD, DATCRE, HMSCRE });
 
-      alert(`Sucesso! Reserva confirmada para ${nome}.`);
-      setNome(''); // Limpa o campo após sucesso
-      setAcompanhantes(1);
+      const txtAcomp = QTDACO === 0 
+        ? "SEM ACOMPANHANTES" 
+        : `com ${QTDACO} ${QTDACO === 1 ? 'ACOMPANHANTE' : 'ACOMPANHANTES'}`;
+
+      alert(`Sucesso! Reserva confirmada para: ${NOMCRE} ${txtAcomp}.`);
+      
+      setNome(''); 
+      setAcompanhantes(0);
     } catch (error) {
-      alert("Erro ao salvar. Verifique se as regras do Firebase estão em 'Modo de Teste'.");
+      alert("ERRO AO SALVAR. TENTE NOVAMENTE.");
     } finally {
       setEnviando(false);
     }
-  };
-
-  const abrirMapa = () => {
-    Linking.openURL("https://www.google.com/maps/search/?api=1&query=Churrascaria+Prato+Cheio+Embu+das+Artes");
   };
 
   return (
@@ -101,7 +124,6 @@ export default function HomeScreen() {
         </View>
       </ImageBackground>
 
-      {/* Cronômetro */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Quanto tempo falta?</Text>
         <View style={styles.timerRow}>
@@ -116,7 +138,6 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Confirmação de Reserva */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Reserva de Mesa</Text>
         <View style={styles.deadlineBadge}>
@@ -129,11 +150,12 @@ export default function HomeScreen() {
           placeholderTextColor="#999"
           value={nome}
           onChangeText={setNome}
+          autoCapitalize="characters"
         />
         
-        <Text style={styles.labelSelect}>Quantas pessoas (incluindo você)?</Text>
+        <Text style={styles.labelSelect}>Quantos acompanhantes levará?</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorScroll}>
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => ( 
+          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => ( 
             <TouchableOpacity 
               key={num} 
               style={[styles.numCircle, acompanhantes === num && styles.numCircleActive]}
@@ -149,11 +171,10 @@ export default function HomeScreen() {
           onPress={confirmarPresenca}
           disabled={enviando}
         >
-          <Text style={styles.buttonText}>{enviando ? "Salvando..." : "Confirmar Presença"}</Text>
+          <Text style={styles.buttonText}>{enviando ? "SALVANDO..." : "CONFIRMAR PRESENÇA"}</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Localização */}
       <View style={styles.locationSection}>
         <View style={styles.divider} />
         <Text style={styles.locationTitle}>📍 Onde vamos comemorar?</Text>
@@ -166,7 +187,7 @@ export default function HomeScreen() {
             <Image key={index} source={foto} style={styles.fotoQuadrinho} resizeMode="cover" />
           ))}
         </View>
-        <TouchableOpacity style={styles.gpsButton} onPress={abrirMapa}>
+        <TouchableOpacity style={styles.gpsButton} onPress={() => Linking.openURL("https://www.google.com/maps/search/?api=1&query=Churrascaria+Prato+Cheio+Embu+das+Artes")}>
           <Text style={styles.gpsButtonText}>Ver rota no Google Maps</Text>
         </TouchableOpacity>
         <View style={[styles.divider, { marginTop: 40 }]} />
@@ -183,14 +204,10 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'center', alignItems: 'center' },
   nomes: { fontSize: 50, color: '#FFF', fontWeight: 'bold', textShadowColor: '#000', textShadowRadius: 10 },
   subtitulo: { fontSize: 20, color: '#FFF', letterSpacing: 3, textTransform: 'uppercase', marginTop: 5 },
-  card: { 
-    backgroundColor: '#FFFFFF', marginHorizontal: 20, marginTop: -30, marginBottom: 20, 
-    padding: 25, borderRadius: 25, elevation: 8, alignItems: 'center' 
-  },
+  card: { backgroundColor: '#FFFFFF', marginHorizontal: 20, marginTop: -30, marginBottom: 20, padding: 25, borderRadius: 25, elevation: 8, alignItems: 'center' },
   cardTitle: { fontSize: 20, fontWeight: '700', marginBottom: 15, color: '#444' },
   deadlineBadge: { backgroundColor: '#FFF4E5', paddingVertical: 6, paddingHorizontal: 15, borderRadius: 20, marginBottom: 15, borderWidth: 1, borderColor: '#FFE0B2' },
   deadlineText: { color: '#E65100', fontWeight: 'bold', fontSize: 13 },
-  infoText: { textAlign: 'center', color: '#777', marginBottom: 20, lineHeight: 20 },
   timerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%' },
   timeBox: { alignItems: 'center', backgroundColor: '#F9F9F9', padding: 10, borderRadius: 15, minWidth: 65, borderWidth: 1, borderColor: '#EEE', marginHorizontal: 6 },
   timeBoxHighlight: { backgroundColor: '#FFF', borderColor: '#C5A059', borderWidth: 1.5, elevation: 3 },
