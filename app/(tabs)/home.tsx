@@ -1,3 +1,5 @@
+import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Image,
@@ -27,13 +29,15 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
+// Certifique-se de que os caminhos das imagens estão corretos no seu projeto
 import fotoCasal from '../../assets/foto-casal.jpg';
 import rest1 from '../../assets/resturante_1.jpg';
 import rest2 from '../../assets/resturante_2.jpg';
 import rest3 from '../../assets/resturante_3.jpg';
 import rest4 from '../../assets/resturante_4.jpg';
 
-export default function HomeScreen() {
+export default function HomeCasamento() {
+  const router = useRouter(); // Navegação
   const dataEvento = new Date('2026-05-23T20:00:00').getTime();
   const [timeLeft, setTimeLeft] = useState(dataEvento - Date.now());
   const [nome, setNome] = useState('');
@@ -55,20 +59,15 @@ export default function HomeScreen() {
 
   const fotosRestaurante = [rest1, rest2, rest3, rest4];
 
-  // --- FUNÇÃO DE VALIDAÇÃO DE PALAVRAS BLOQUEADAS (TURBINADA) ---
   const verificarPalavrasBloqueadas = (texto: string) => {
     const blacklist = [
-      // Termos de "engraçadinhos" e gírias
       'GOSTOSO', 'GOSTOSA', 'GOSTOSINHO', 'GOSTOSINHA', 'DELICIA', 'DELÍCIA', 
       'GATINHO', 'GATINHA', 'LINDO', 'LINDA', 'TESAO', 'TESÃO', 'BEBE', 'BEBÊ',
       'NENEM', 'NENÉM', 'AMOR', 'AMORZINHO', 'XUXU', 'DOCINHO', 'SAFADO', 'SAFADA',
-      
-      // Insultos e palavrões
       'CACHORRO', 'CADELA', 'PUTA', 'PUTO', 'CARALHO', 'FODER', 'FODA', 'CORNO', 
       'OTARIO', 'OTÁRIO', 'VACILAO', 'VACILÃO', 'TROUXA', 'IDIOTA', 'IMBECIL', 
       'MERDA', 'BOSTA', 'LIXO', 'DESGRAÇA', 'CAPETA', 'DIABO', 'VAGABUNDO', 'VAGABUNDA'
     ];
-    
     const textoUpper = texto.toUpperCase();
     return blacklist.some(palavra => textoUpper.includes(palavra));
   };
@@ -119,6 +118,11 @@ export default function HomeScreen() {
       
       <ImageBackground source={fotoCasal} style={styles.header} resizeMode="cover">
         <View style={styles.overlay}>
+          {/* BOTÃO SECRETO AGORA NAVEGA PARA A PÁGINA ADMIN */}
+          <TouchableOpacity style={styles.loginIcon} onPress={() => router.push('/pagconfirmacao')}>
+            <Feather name="lock" size={24} color="rgba(255,255,255,0.7)" />
+          </TouchableOpacity>
+
           <Text style={styles.nomes}>Veni & Carol</Text>
           <Text style={styles.subtitulo}>Nossa Celebração</Text>
         </View>
@@ -193,7 +197,6 @@ export default function HomeScreen() {
         <View style={[styles.divider, { marginTop: 40 }]} />
         <Text style={styles.footerText}>Esperamos por vocês! ❤️</Text>
       </View>
-
     </ScrollView>
   );
 }
@@ -201,7 +204,8 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FAF9F6' },
   header: { height: 500, width: '100%' },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'center', alignItems: 'center' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  loginIcon: { position: 'absolute', top: 50, right: 20, padding: 10 },
   nomes: { fontSize: 50, color: '#FFF', fontWeight: 'bold', textShadowColor: '#000', textShadowRadius: 10 },
   subtitulo: { fontSize: 20, color: '#FFF', letterSpacing: 3, textTransform: 'uppercase', marginTop: 5 },
   card: { backgroundColor: '#FFFFFF', marginHorizontal: 20, marginTop: -30, marginBottom: 20, padding: 25, borderRadius: 25, elevation: 8, alignItems: 'center' },
@@ -233,5 +237,5 @@ const styles = StyleSheet.create({
   restaurantAddress: { fontSize: 15, color: '#999', marginTop: 5, fontStyle: 'italic' },
   gpsButton: { marginTop: 20, paddingVertical: 12, paddingHorizontal: 25, borderRadius: 30, borderWidth: 1, borderColor: '#C5A059', backgroundColor: 'transparent' },
   gpsButtonText: { color: '#C5A059', fontWeight: '600', fontSize: 14, textTransform: 'uppercase' },
-  footerText: { fontSize: 18, color: '#C5A059', marginBottom: 60 },
+  footerText: { fontSize: 18, color: '#C5A059', marginBottom: 60 }
 });
