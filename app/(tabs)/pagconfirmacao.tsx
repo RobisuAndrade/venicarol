@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, FlatList, Modal, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Modal, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 // --- CONFIGURAÇÃO DO FIREBASE ---
 import { initializeApp } from "firebase/app";
@@ -27,6 +27,7 @@ export default function PagConfirmacao() {
   // Controle de Acesso
   const [logado, setLogado] = useState(false);
   const [senha, setSenha] = useState('');
+  const [mostrarSenha, setMostrarSenha] = useState(false);
   
   // Dados do Firebase
   const [listaConfirmados, setListaConfirmados] = useState<any[]>([]);
@@ -58,34 +59,48 @@ export default function PagConfirmacao() {
   }, [logado]);
 
   const fazerLogin = () => {
-    if (senha === 'ventilador') {
+    if (senha.trim() === 'ventilador') {
       setLogado(true);
       setSenha(''); 
+      setMostrarSenha(false); 
     } else {
-      Alert.alert("Erro", "Senha incorreta!");
+      if (Platform.OS === 'web') {
+        window.alert("Senha incorreta!");
+      } else {
+        Alert.alert("Erro", "Senha incorreta!");
+      }
     }
   };
 
   // --- FUNÇÕES DE ADMINISTRAÇÃO (EDITAR E APAGAR) ---
   const confirmarExclusao = (id: string, nome: string) => {
-    Alert.alert(
-      "Excluir Confirmação",
-      `Tem certeza que deseja apagar a presença de "${nome}"?`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        { 
-          text: "Excluir", 
-          style: "destructive", 
-          onPress: async () => {
-            try {
-              await remove(ref(db, `confirmacoes/${id}`));
-            } catch (e) {
-              Alert.alert("Erro", "Não foi possível excluir o convidado.");
+    if (Platform.OS === 'web') {
+      const confirmou = window.confirm(`Tem certeza que deseja apagar a presença de "${nome}"?`);
+      if (confirmou) {
+        remove(ref(db, `confirmacoes/${id}`)).catch(() => {
+          window.alert("Não foi possível excluir o convidado.");
+        });
+      }
+    } else {
+      Alert.alert(
+        "Excluir Confirmação",
+        `Tem certeza que deseja apagar a presença de "${nome}"?`,
+        [
+          { text: "Cancelar", style: "cancel" },
+          { 
+            text: "Excluir", 
+            style: "destructive", 
+            onPress: async () => {
+              try {
+                await remove(ref(db, `confirmacoes/${id}`));
+              } catch (e) {
+                Alert.alert("Erro", "Não foi possível excluir o convidado.");
+              }
             }
           }
-        }
-      ]
-    );
+        ]
+      );
+    }
   };
 
   const abrirEdicao = (item: any) => {
@@ -97,11 +112,15 @@ export default function PagConfirmacao() {
 
   const salvarEdicao = async () => {
     if (!editNome.trim()) {
-      Alert.alert("Atenção", "O nome do convidado não pode ficar vazio.");
+      if (Platform.OS === 'web') {
+        window.alert("O nome do convidado não pode ficar vazio.");
+      } else {
+        Alert.alert("Atenção", "O nome do convidado não pode ficar vazio.");
+      }
       return;
     }
     try {
-      const SUMQTD = 1 + editAcompanhantes; // Recalcula o total (O próprio convidado + acompanhantes)
+      const SUMQTD = 1 + editAcompanhantes; 
       
       await update(ref(db, `confirmacoes/${itemEditando}`), {
         NOMCRE: editNome.toUpperCase(),
@@ -112,7 +131,41 @@ export default function PagConfirmacao() {
       setModalEditVisible(false);
       setItemEditando(null);
     } catch(e) {
-      Alert.alert("Erro", "Falha ao atualizar os dados do convidado.");
+      if (Platform.OS === 'web') {
+        window.alert("Falha ao atualizar os dados do convidado.");
+      } else {
+        Alert.alert("Erro", "Falha ao atualizar os dados do convidado.");
+      }
+    }
+  };
+
+  // --- FUNÇÃO DE EXTRAÇÃO CSV ---
+  const exportarCSV = () => {
+    if (listaConfirmados.length === 0) {
+      if (Platform.OS === 'web') window.alert("Nenhum convidado para extrair.");
+      else Alert.alert("Aviso", "Nenhum convidado para extrair.");
+      return;
+    }
+
+    let csvString = "Nome Completo,Acompanhantes,Total de Pessoas,Data de Confirmacao,Hora da Confirmacao\n";
+    
+    listaConfirmados.forEach(item => {
+      // Aspas duplas no nome para evitar que quebre a coluna se houver vírgula
+      csvString += `"${item.NOMCRE}",${item.QTDACO},${item.SUMQTD},${item.DATCRE},${item.HMSCRE}\n`;
+    });
+
+    if (Platform.OS === 'web') {
+      // Adicionamos o "\uFEFF" para forçar o Excel a ler os acentos (UTF-8 BOM)
+      const blob = new Blob(["\uFEFF" + csvString], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'lista_convidados_casamento.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      Alert.alert("Aviso", "A extração em Excel/CSV está disponível acessando o painel pelo computador.");
     }
   };
 
@@ -123,7 +176,7 @@ export default function PagConfirmacao() {
     return (
       <SafeAreaView style={styles.loginContainer}>
         <View style={styles.loginCard}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButtonMini}>
+          <TouchableOpacity onPress={() => router.push('/')} style={styles.backButtonMini}>
             <Feather name="arrow-left" size={24} color="#C5A059" />
           </TouchableOpacity>
 
@@ -131,15 +184,23 @@ export default function PagConfirmacao() {
           <Text style={styles.loginTitle}>Acesso Restrito</Text>
           <Text style={styles.loginSubtitle}>Área exclusiva dos noivos.</Text>
           
-          <TextInput 
-            style={styles.inputSenha}
-            placeholder="Digite a senha..."
-            placeholderTextColor="#999"
-            secureTextEntry
-            value={senha}
-            onChangeText={setSenha}
-            onSubmitEditing={fazerLogin}
-          />
+          <View style={styles.senhaWrapper}>
+            <TextInput 
+              style={styles.inputSenha}
+              placeholder="Digite a senha..."
+              placeholderTextColor="#999"
+              secureTextEntry={!mostrarSenha}
+              value={senha}
+              onChangeText={setSenha}
+              onSubmitEditing={fazerLogin}
+            />
+            <TouchableOpacity 
+              style={styles.eyeIcon} 
+              onPress={() => setMostrarSenha(!mostrarSenha)}
+            >
+              <Feather name={mostrarSenha ? "eye" : "eye-off"} size={20} color="#999" />
+            </TouchableOpacity>
+          </View>
           
           <TouchableOpacity style={styles.btnLogin} onPress={fazerLogin}>
             <Text style={styles.btnLoginText}>Entrar no Painel</Text>
@@ -160,7 +221,7 @@ export default function PagConfirmacao() {
       
       <View style={styles.adminHeader}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => router.push('/')} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color="#C5A059" />
           </TouchableOpacity>
           <View>
@@ -169,9 +230,16 @@ export default function PagConfirmacao() {
           </View>
         </View>
 
-        <TouchableOpacity onPress={() => setLogado(false)} style={styles.btnLogout}>
-          <Feather name="log-out" size={20} color="#C5A059" />
-        </TouchableOpacity>
+        <View style={styles.headerAcoes}>
+          <TouchableOpacity onPress={exportarCSV} style={styles.btnExport}>
+            <Feather name="download" size={18} color="#FFF" />
+            {Platform.OS === 'web' && <Text style={styles.btnExportText}>CSV</Text>}
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => { setLogado(false); router.push('/'); }} style={styles.btnLogout}>
+            <Feather name="log-out" size={20} color="#C5A059" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.dashboardCards}>
@@ -194,7 +262,6 @@ export default function PagConfirmacao() {
         renderItem={({ item }) => (
           <View style={styles.guestCard}>
             
-            {/* INFORMAÇÕES DO CONVIDADO */}
             <View style={styles.guestCardHeader}>
               <View style={{ flex: 1, paddingRight: 10 }}>
                 <Text style={styles.guestName}>{item.NOMCRE}</Text>
@@ -206,7 +273,6 @@ export default function PagConfirmacao() {
               </View>
             </View>
 
-            {/* AÇÕES DE EDITAR E EXCLUIR */}
             <View style={styles.guestActions}>
               <TouchableOpacity style={styles.actionBtnEdit} onPress={() => abrirEdicao(item)}>
                 <Feather name="edit-2" size={14} color="#C5A059" />
@@ -226,7 +292,6 @@ export default function PagConfirmacao() {
         )}
       />
 
-      {/* MODAL DE EDIÇÃO DE CONVIDADOS */}
       <Modal visible={modalEditVisible} transparent={true} animationType="fade" onRequestClose={() => setModalEditVisible(false)}>
         <View style={styles.modalBg}>
           <View style={styles.modalCard}>
@@ -276,22 +341,28 @@ export default function PagConfirmacao() {
 }
 
 const styles = StyleSheet.create({
-  // --- ESTILOS DA TELA DE LOGIN ---
   loginContainer: { flex: 1, backgroundColor: '#FAF9F6', justifyContent: 'center', alignItems: 'center', padding: 20 },
   loginCard: { backgroundColor: '#FFF', width: '100%', maxWidth: 400, padding: 30, borderRadius: 20, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 10 },
   backButtonMini: { position: 'absolute', top: 20, left: 20, padding: 5 },
   loginTitle: { fontSize: 24, fontWeight: 'bold', color: '#333', textAlign: 'center', marginBottom: 5 },
   loginSubtitle: { fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 30 },
-  inputSenha: { height: 50, backgroundColor: '#F5F5F5', borderRadius: 12, paddingHorizontal: 15, fontSize: 18, borderWidth: 1, borderColor: '#E0E0E0', marginBottom: 20, textAlign: 'center', letterSpacing: 5 },
+  
+  senhaWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F5F5', borderRadius: 12, borderWidth: 1, borderColor: '#E0E0E0', marginBottom: 20, height: 50, paddingHorizontal: 15 },
+  inputSenha: { flex: 1, fontSize: 18, textAlign: 'center', letterSpacing: 5, color: '#333' },
+  eyeIcon: { padding: 5 },
+
   btnLogin: { backgroundColor: '#C5A059', paddingVertical: 15, borderRadius: 12, alignItems: 'center' },
   btnLoginText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
 
-  // --- ESTILOS DO PAINEL ADMIN ---
   adminContainer: { flex: 1, backgroundColor: '#FAF9F6' },
   adminHeader: { backgroundColor: '#FFF', padding: 20, paddingTop: 40, paddingBottom: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#E0E0E0' },
   backButton: { marginRight: 15, padding: 5 },
   adminTitle: { fontSize: 22, fontWeight: 'bold', color: '#333' },
   adminSubtitle: { fontSize: 14, color: '#999' },
+  
+  headerAcoes: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  btnExport: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#C5A059', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, gap: 6 },
+  btnExportText: { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
   btnLogout: { backgroundColor: '#FFF4E5', padding: 10, borderRadius: 12 },
   
   dashboardCards: { flexDirection: 'row', padding: 20, gap: 15 },
@@ -299,7 +370,6 @@ const styles = StyleSheet.create({
   dashCardTitle: { color: '#888', fontSize: 11, textTransform: 'uppercase', marginTop: 10, marginBottom: 5, fontWeight: '600', textAlign: 'center' },
   dashCardValue: { color: '#333', fontSize: 32, fontWeight: 'bold' },
 
-  // --- ESTILOS DO CARD DE CONVIDADO ---
   guestCard: { backgroundColor: '#FFF', padding: 15, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: '#E0E0E0', elevation: 1 },
   guestCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
   guestName: { fontSize: 16, fontWeight: 'bold', color: '#444', marginBottom: 4 },
@@ -308,14 +378,12 @@ const styles = StyleSheet.create({
   guestBadgeNum: { fontSize: 20, fontWeight: 'bold', color: '#C5A059' },
   guestBadgeText: { fontSize: 9, color: '#C5A059', textTransform: 'uppercase', fontWeight: 'bold', marginTop: 2 },
   
-  // Ações do Card
   guestActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, borderTopWidth: 1, borderTopColor: '#F0F0F0', paddingTop: 12 },
   actionBtnEdit: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF4E5', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
   actionTextEdit: { color: '#C5A059', fontSize: 12, fontWeight: 'bold', marginLeft: 6 },
   actionBtnDelete: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFEBEB', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
   actionTextDelete: { color: '#FF4D4D', fontSize: 12, fontWeight: 'bold', marginLeft: 6 },
 
-  // --- ESTILOS DO MODAL DE EDIÇÃO ---
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalCard: { backgroundColor: '#FFF', width: '100%', maxWidth: 400, padding: 25, borderRadius: 20 },
   modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },

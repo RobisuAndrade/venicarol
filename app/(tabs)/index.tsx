@@ -2,18 +2,23 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   Image,
   ImageBackground,
   Linking,
+  Platform,
   ScrollView,
-  StyleSheet, Text,
-  TextInput, TouchableOpacity,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
   View
 } from 'react-native';
 
 // --- CONFIGURAÇÃO DO FIREBASE ---
 import { initializeApp } from "firebase/app";
-import { getDatabase, push, ref, set } from "firebase/database";
+// Importamos get e update para buscar duplicidades e atualizar a quantidade
+import { get, getDatabase, push, ref, set, update } from "firebase/database";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDxLT8VCsa5pnKgs757iOIN1d7HHlQW2uk",
@@ -44,6 +49,9 @@ export default function HomeCasamento() {
   const [acompanhantes, setAcompanhantes] = useState(0);
   const [enviando, setEnviando] = useState(false);
 
+  // NOVO: Controle de alteração para convidados que já confirmaram
+  const [idParaAtualizar, setIdParaAtualizar] = useState<string | null>(null);
+
   useEffect(() => {
     const timer = setInterval(() => setTimeLeft(dataEvento - Date.now()), 1000);
     return () => clearInterval(timer);
@@ -72,14 +80,31 @@ export default function HomeCasamento() {
     return blacklist.some(palavra => textoUpper.includes(palavra));
   };
 
+  // Helper para alertas na Web e no Celular
+  const alertHelper = (msg: string) => {
+    if (Platform.OS === 'web') {
+      window.alert(msg);
+    } else {
+      Alert.alert("Aviso", msg);
+    }
+  };
+
+  // Se a pessoa começar a digitar um nome diferente, tiramos ela do modo de alteração
+  const handleMudarNome = (texto: string) => {
+    setNome(texto);
+    if (idParaAtualizar) {
+      setIdParaAtualizar(null);
+    }
+  };
+
   const confirmarPresenca = async () => {
     if (nome.trim().length < 3) {
-      alert("POR FAVOR, DIGITE SEU NOME COMPLETO.");
+      alertHelper("POR FAVOR, DIGITE SEU NOME COMPLETO.");
       return;
     }
 
     if (verificarPalavrasBloqueadas(nome)) {
-      alert("ENGRAÇADINHO VOCÊ, INFELIZMENTE TERÁ QUE PAGAR A CONTA TODA!");
+      alertHelper("ENGRAÇADINHO VOCÊ, INFELIZMENTE TERÁ QUE PAGAR A CONTA TODA!");
       return;
     }
 
@@ -87,27 +112,87 @@ export default function HomeCasamento() {
     
     try {
       const agora = new Date();
-      const NOMCRE = nome.toUpperCase();
+      const NOMCRE_FORMATADO = nome.trim().toUpperCase();
       const QTDACO = acompanhantes;
       const SUMQTD = 1 + acompanhantes;
       const DATCRE = agora.toLocaleDateString('pt-BR');
       const HMSCRE = agora.toLocaleTimeString('pt-BR');
 
+      // --- 1. SE A PESSOA CAIU NA REGRA DE ALTERAR E ESTÁ SALVANDO A MUDANÇA ---
+      if (idParaAtualizar) {
+        await update(ref(db, `confirmacoes/${idParaAtualizar}`), {
+          QTDACO,
+          SUMQTD,
+          DATCRE, 
+          HMSCRE,
+          ALTERADO: true // Trava ativada! Ela não poderá mudar de novo.
+        });
+
+        alertHelper(`Sucesso! Alteração de acompanhantes confirmada para: ${NOMCRE_FORMATADO}.`);
+        setNome('');
+        setAcompanhantes(0);
+        setIdParaAtualizar(null);
+        setEnviando(false);
+        return;
+      }
+
+      // --- 2. VERIFICAR SE O NOME JÁ EXISTE NO BANCO ANTES DE GRAVAR ---
+      const snapshot = await get(ref(db, 'confirmacoes'));
+      if (snapshot.exists()) {
+        const dados = snapshot.val();
+        const chaves = Object.keys(dados);
+        let convidadoExistente = null;
+        let idExistente = null;
+
+        for (let key of chaves) {
+          if (dados[key].NOMCRE === NOMCRE_FORMATADO) {
+            convidadoExistente = dados[key];
+            idExistente = key;
+            break; 
+          }
+        }
+
+        // Se encontrou o mesmo nome
+        if (convidadoExistente) {
+          if (convidadoExistente.ALTERADO) {
+            // Se já tem a trava de alterado, bloqueia.
+            alertHelper("Você já alterou sua confirmação uma vez! Caso precise de mais alguma mudança, por favor, fale diretamente com os noivos.");
+            setEnviando(false);
+            return;
+          } else {
+            // Se encontrou mas não tem a trava, dá a oportunidade
+            alertHelper(`ATENÇÃO: O nome "${NOMCRE_FORMATADO}" já está confirmado!\n\nSe você deseja alterar a quantidade de acompanhantes, ajuste o número abaixo e clique no botão novamente.\n\n(Lembrando: Você só pode fazer isso 1 vez)`);
+            setIdParaAtualizar(idExistente);
+            setAcompanhantes(convidadoExistente.QTDACO); // Seta os acompanhantes que ele tinha posto
+            setEnviando(false);
+            return;
+          }
+        }
+      }
+
+      // --- 3. SE É UM NOME TOTALMENTE NOVO (Fluxo normal) ---
       const listaRef = ref(db, 'confirmacoes');
       const novaReservaRef = push(listaRef);
       
-      await set(novaReservaRef, { NOMCRE, QTDACO, SUMQTD, DATCRE, HMSCRE });
+      await set(novaReservaRef, { 
+        NOMCRE: NOMCRE_FORMATADO, 
+        QTDACO, 
+        SUMQTD, 
+        DATCRE, 
+        HMSCRE,
+        ALTERADO: false // Registra como novo, ainda não alterado
+      });
 
       const txtAcomp = QTDACO === 0 
         ? "SEM ACOMPANHANTES" 
         : `com ${QTDACO} ${QTDACO === 1 ? 'ACOMPANHANTE' : 'ACOMPANHANTES'}`;
 
-      alert(`Sucesso! Reserva confirmada para: ${NOMCRE} ${txtAcomp}.`);
+      alertHelper(`Sucesso! Reserva confirmada para: ${NOMCRE_FORMATADO} ${txtAcomp}.`);
       
       setNome(''); 
       setAcompanhantes(0);
     } catch (error) {
-      alert("ERRO AO SALVAR. TENTE NOVAMENTE.");
+      alertHelper("ERRO AO SALVAR. TENTE NOVAMENTE.");
     } finally {
       setEnviando(false);
     }
@@ -118,7 +203,7 @@ export default function HomeCasamento() {
       
       <ImageBackground source={fotoCasal} style={styles.header} resizeMode="cover">
         <View style={styles.overlay}>
-          {/* BOTÃO SECRETO AGORA NAVEGA PARA A PÁGINA ADMIN */}
+          {/* BOTÃO SECRETO NAVEGA PARA A PÁGINA ADMIN */}
           <TouchableOpacity style={styles.loginIcon} onPress={() => router.push('/pagconfirmacao')}>
             <Feather name="lock" size={24} color="rgba(255,255,255,0.7)" />
           </TouchableOpacity>
@@ -153,7 +238,7 @@ export default function HomeCasamento() {
           placeholder="Seu nome completo" 
           placeholderTextColor="#999"
           value={nome}
-          onChangeText={setNome}
+          onChangeText={handleMudarNome}
           autoCapitalize="characters"
         />
         
@@ -175,7 +260,14 @@ export default function HomeCasamento() {
           onPress={confirmarPresenca}
           disabled={enviando}
         >
-          <Text style={styles.buttonText}>{enviando ? "SALVANDO..." : "CONFIRMAR PRESENÇA"}</Text>
+          <Text style={styles.buttonText}>
+            {enviando 
+              ? "SALVANDO..." 
+              : idParaAtualizar 
+                ? "CONFIRMAR ALTERAÇÃO" // Se achou o nome, o botão muda
+                : "CONFIRMAR PRESENÇA"
+            }
+          </Text>
         </TouchableOpacity>
       </View>
 
